@@ -59,9 +59,9 @@
                   ) tests
                 );
               in
-              # This feels wrong? I don't know Nix enough and don't know other pattern other than
-              # making it a derivation and putting it in as a build time check, but should be able
-              # to test on eval time.
+              # This feels wrong? I don't know Nix enough: the only pattern I know if to make it a
+              # derivation and have it as a build time check, but we should be able to test at eval
+              # time. But how?
               pkgs.runCommandLocal "test-suite-${label}" { } (
                 builtins.deepSeq (lib.debug.throwTestFailures { inherit failures; }) ''
                   touch $out
