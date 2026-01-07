@@ -1,7 +1,8 @@
-{ inputs, flake-parts-lib, ... }:
+{ flake-parts-lib, self, ... }:
 {
   options.perSystem = flake-parts-lib.mkPerSystemOption (
     {
+      self',
       pkgs,
       lib,
       system,
@@ -13,6 +14,12 @@
         let
           scope = lib.makeScope pkgs.newScope (scopeSelf: {
             inherit (pkgs) terraform;
+
+            # Injecting self as terranix-modules, to all the tests to make tests look like how the
+            # users would use.
+            terranix-modules = self;
+
+            # Custom test suite. A thin facade over lib.debug testers.
             suite =
               label:
               { tests }:

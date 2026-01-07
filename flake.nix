@@ -44,6 +44,7 @@
         ./nix/devshells.nix
         ./nix/treefmt.nix
         ./nix/scope.nix
+        ./nix/lib.nix
         devshell.flakeModule
         treefmt-nix.flakeModule
         flakeAllSystems
