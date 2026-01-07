@@ -3,7 +3,7 @@ suite {
   label = "base";
   tests = [
     {
-      label = "foo";
+      label = "simple";
       options = {
         name = lib.mkOption { type = lib.types.str; };
       };
@@ -12,7 +12,7 @@ suite {
       };
     }
     {
-      label = "bar";
+      label = "expect to fail";
       options = {
         name = lib.mkOption { type = lib.types.str; };
       };
@@ -22,7 +22,7 @@ suite {
       success = false;
     }
     {
-      label = "baz";
+      label = "self-referencing config";
       options = {
         name = lib.mkOption { type = lib.types.str; };
         fullname = lib.mkOption { type = lib.types.str; };
