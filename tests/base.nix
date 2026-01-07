@@ -8,7 +8,6 @@ suite "base" {
       config = {
         name = "foo";
       };
-      expected = true;
     };
     "expect to fail" = {
       options = {
@@ -28,7 +27,6 @@ suite "base" {
         name = "baz";
         fullname = config.name;
       };
-      expected = true;
     };
   };
 }

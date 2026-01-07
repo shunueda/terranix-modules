@@ -29,7 +29,7 @@
                     name: test:
                     # lib.runTests wants all names to be prefixed with "test", but I don't.
                     lib.nameValuePair "test${name}" {
-                      inherit (test) expected;
+                      expected = test.expected or true;
                       expr =
                         let
                           # Note that this is not yet fully evaluated - Nix is lazy!
