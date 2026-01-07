@@ -9,6 +9,7 @@ suite "base" {
         name = "foo";
       };
     };
+
     "expect to fail" = {
       options = {
         name = lib.mkOption { type = lib.types.str; };
@@ -18,6 +19,7 @@ suite "base" {
       };
       expected = false;
     };
+
     "self-referencing config" = {
       options = {
         name = lib.mkOption { type = lib.types.str; };
