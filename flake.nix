@@ -21,10 +21,7 @@
     let
       flakeAllSystems = {
         perSystem =
-          {
-            system,
-            ...
-          }:
+          { system, ... }:
           {
             _module.args = {
               pkgs = import nixpkgs {
@@ -40,6 +37,7 @@
       imports = [
         ./nix/devshells.nix
         ./nix/treefmt.nix
+        ./nix/scope.nix
         devshell.flakeModule
         treefmt-nix.flakeModule
         flakeAllSystems
