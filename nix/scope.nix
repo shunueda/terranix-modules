@@ -14,42 +14,47 @@
           scope = lib.makeScope pkgs.newScope (scopeSelf: {
             inherit (pkgs) terraform;
             suite =
-              { label, tests }:
+              label:
+              { tests }:
               let
-                report = map (
-                  test:
-                  let
-                    # Note that this is not yet fully evaluated - Nix is lazy evaluated!
-                    evaluated = lib.evalModules {
-                      modules = [
-                        { inherit (test) options; }
-                        (
-                          if lib.isFunction test.config then
-                            { config, ... }:
-                            {
-                              config = test.config config;
-                            }
-                          else
-                            { inherit (test) config; }
-                        )
-                      ];
-                    };
-                    # Now we force full evaluation with deepSeq.
-                    result = builtins.tryEval (builtins.deepSeq evaluated.config true);
-                  in
-                  {
-                    inherit (test) label;
-                    success = result.success == (test.success or true);
-                  }
-                ) tests;
+                failures = lib.runTests (
+                  lib.mapAttrs' (
+                    name: test:
+                    # lib.runTests wants all names to be prefixed with "test", but I don't.
+                    lib.nameValuePair "test${name}" {
+                      inherit (test) expected;
+                      expr =
+                        let
+                          # Note that this is not yet fully evaluated - Nix is lazy!
+                          evaluated = lib.evalModules {
+                            modules = [
+                              { inherit (test) options; }
+                              (
+                                if lib.isFunction test.config then
+                                  { config, ... }:
+                                  {
+                                    config = test.config config;
+                                  }
+                                else
+                                  { inherit (test) config; }
+                              )
+                            ];
+                          };
+                        in
+                        # Now we force full evaluation.
+                        (builtins.tryEval (builtins.deepSeq evaluated.config true)).success;
+                    }
+                  ) tests
+                );
               in
-              pkgs.runCommandLocal "test-suite-${label}" { } ''
-                ${lib.concatMapStringsSep "\n" (
-                  { success, label }: "echo ${if success then "✓" else "✗"} ${label}"
-                ) report}
-                ${if builtins.elem false (map ({ success, ... }: success) report) then "exit 1" else ""}
-                touch $out
-              '';
+              # This feels wrong? I don't know Nix enough and don't know other pattern other than
+              # making it a derivation and putting it in as a build time check, but should be able
+              # to test on eval time.
+              pkgs.runCommandLocal "test-suite-${label}" { } (
+                builtins.deepSeq (lib.debug.throwTestFailures { inherit failures; }) ''
+                  touch $out
+                ''
+              );
           });
           availableOnSystem = lib.meta.availableOn { inherit system; };
         in

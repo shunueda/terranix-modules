@@ -1,28 +1,25 @@
 { lib, suite, ... }:
-suite {
-  label = "base";
-  tests = [
-    {
-      label = "simple";
+suite "base" {
+  tests = {
+    "simple" = {
       options = {
         name = lib.mkOption { type = lib.types.str; };
       };
       config = {
         name = "foo";
       };
-    }
-    {
-      label = "expect to fail";
+      expected = true;
+    };
+    "expect to fail" = {
       options = {
         name = lib.mkOption { type = lib.types.str; };
       };
       config = {
         name = 0;
       };
-      success = false;
-    }
-    {
-      label = "self-referencing config";
+      expected = false;
+    };
+    "self-referencing config" = {
       options = {
         name = lib.mkOption { type = lib.types.str; };
         fullname = lib.mkOption { type = lib.types.str; };
@@ -31,6 +28,7 @@ suite {
         name = "baz";
         fullname = config.name;
       };
-    }
-  ];
+      expected = true;
+    };
+  };
 }
