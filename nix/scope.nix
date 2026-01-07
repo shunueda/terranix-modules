@@ -26,16 +26,21 @@
               let
                 failures = lib.runTests (
                   lib.mapAttrs' (
-                    name: test:
+                    name:
+                    {
+                      options,
+                      config,
+                      expected ? true,
+                    }@test:
                     # lib.runTests wants all names to be prefixed with "test", but I don't.
                     lib.nameValuePair "test${name}" {
-                      expected = test.expected or true;
+                      inherit expected;
                       expr =
                         let
                           # Note that this is not yet fully evaluated - Nix is lazy!
                           evaluated = lib.evalModules {
                             modules = [
-                              { inherit (test) options; }
+                              { inherit options; }
                               (
                                 if lib.isFunction test.config then
                                   { config, ... }:
@@ -43,7 +48,7 @@
                                     config = test.config config;
                                   }
                                 else
-                                  { inherit (test) config; }
+                                  { inherit config; }
                               )
                             ];
                           };
