@@ -1,5 +1,6 @@
 { lib, ... }:
 let
+  # https://developer.hashicorp.com/terraform/cli/commands/providers/schema#providers-schema-representation
   internal = rec {
     parseType =
       tfType:
@@ -23,26 +24,41 @@ let
         .${aggregate}
           elementType;
 
-    parseAttribute =
-      name:
-      {
-        type,
-        optional ? false,
-        description ? null,
-        deprecated ? false,
-      }:
-      lib.mkOption (
-        {
-          type =
-            let
-              parsed = parseType type;
-            in
-            if optional then lib.types.nullOr parsed else parsed;
-          inherit description;
-        }
-        // lib.optionalAttrs optional { default = null; }
-        // lib.optionalAttrs deprecated { deprecationMessage = "warning: ${name} is deprecated"; }
-      );
+    parseAttributes =
+      attributes:
+      builtins.mapAttrs
+        (
+          name:
+          {
+            type,
+            optional ? false,
+            computed ? false,
+            description ? null,
+            deprecated ? false,
+          }:
+          lib.mkOption (
+            {
+              type =
+                let
+                  parsed = parseType type;
+                in
+                if optional || computed then lib.types.nullOr parsed else parsed;
+              inherit description;
+            }
+            // lib.optionalAttrs (optional || computed) { default = null; }
+            // lib.optionalAttrs deprecated { deprecationMessage = "warning: ${name} is deprecated"; }
+          )
+        )
+        (
+          builtins.filterAttrs (
+            name:
+            {
+              computed ? false,
+              optional ? false,
+            }:
+            !(computed && !optional) # computed && non-optional is read-only
+          ) attributes
+        );
 
     parseBlock =
       name:
@@ -63,39 +79,36 @@ let
         // lib.optionalAttrs deprecated { deprecationMessage = "warning: ${name} is deprecated"; }
       );
 
-    parseBlockType =
-      name:
-      {
-        nesting_mode,
-        block,
-        min_items ? 0,
-        max_items ? null,
-      }:
-      let
-        blockType = parseBlock name block;
-        baseType = blockType.type;
-      in
-      lib.mkOption (
+    parseBlockTypes =
+      blockTypes:
+      builtins.mapAttrs (
+        name:
         {
-          type =
-            {
-              list = lib.types.listOf;
-              set = lib.types.listOf;
-              single = lib.types.nullOr;
-              map = lib.types.attrsOf;
-            }
-            .${nesting_mode}
-              baseType;
-          description = blockType.description or null;
-          default = (
-            {
-              list = [ ];
-              set = [ ];
-            } ? nesting_mode
-          );
-        }
-        // lib.optionalAttrs (blockType ? deprecationMessage) { inherit (blockType) deprecationMessage; }
-      );
+          nesting_mode,
+          block,
+          min_items ? 0,
+          max_items ? null,
+        }:
+        let
+          blockType = parseBlock name block;
+          baseType = blockType.type;
+        in
+        lib.mkOption (
+          {
+            type =
+              {
+                list = lib.types.listOf;
+                set = lib.types.listOf;
+                single = lib.types.nullOr;
+                map = lib.types.attrsOf;
+              }
+              .${nesting_mode}
+                baseType;
+            description = blockType.description or null;
+          }
+          // lib.optionalAttrs (blockType ? deprecationMessage) { inherit (blockType) deprecationMessage; }
+        )
+      ) blockTypes;
 
     parseSchema =
       {
@@ -103,9 +116,7 @@ let
         block_types ? { },
       }:
       lib.types.submodule {
-        options =
-          (builtins.mapAttrs internal.parseAttribute attributes)
-          // (builtins.mapAttrs internal.parseBlockType block_types);
+        options = (internal.parseAttributes attributes) // (internal.parseBlockTypes block_types);
       };
   };
 in
