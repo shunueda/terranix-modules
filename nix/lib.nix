@@ -1,34 +1,147 @@
 { lib, ... }:
 let
-  typemap = {
-    string = lib.types.str;
-    number = lib.types.int;
-    bool = lib.types.bool;
+  internal = rec {
+    parseType =
+      tfType:
+      if (builtins.typeOf tfType == "string") then
+        {
+          bool = lib.types.bool;
+          string = lib.types.str;
+          number = lib.types.number;
+        }
+        .${tfType}
+      else
+        let
+          aggregate = builtins.head tfType;
+          elementType = parseType (builtins.elemAt tfType 1);
+        in
+        {
+          list = lib.types.listOf;
+          set = lib.types.listOf;
+          map = lib.types.attrsOf;
+        }
+        .${aggregate}
+          elementType;
+
+    parseAttribute =
+      name:
+      {
+        type,
+        optional ? false,
+        description ? null,
+        deprecated ? false,
+      }:
+      lib.mkOption (
+        {
+          type =
+            let
+              parsed = parseType type;
+            in
+            if optional then lib.types.nullOr parsed else parsed;
+          inherit description;
+        }
+        // lib.optionalAttrs optional { default = null; }
+        // lib.optionalAttrs deprecated { deprecationMessage = "warning: ${name} is deprecated"; }
+      );
+
+    parseBlock =
+      name:
+      {
+        attributes ? { },
+        block_types ? { },
+        description ? null,
+        deprecated ? false,
+      }:
+      let
+        blockType = parseSchema { inherit attributes block_types; };
+      in
+      lib.mkOption (
+        {
+          type = blockType;
+          inherit description;
+        }
+        // lib.optionalAttrs deprecated { deprecationMessage = "warning: ${name} is deprecated"; }
+      );
+
+    parseBlockType =
+      name:
+      {
+        nesting_mode,
+        block,
+        min_items ? 0,
+        max_items ? null,
+      }:
+      let
+        blockType = parseBlock name block;
+        baseType = blockType.type;
+      in
+      lib.mkOption (
+        {
+          type =
+            {
+              list = lib.types.listOf;
+              set = lib.types.listOf;
+              single = lib.types.nullOr;
+              map = lib.types.attrsOf;
+            }
+            .${nesting_mode}
+              baseType;
+          description = blockType.description or null;
+          default = (
+            {
+              list = [ ];
+              set = [ ];
+            } ? nesting_mode
+          );
+        }
+        // lib.optionalAttrs (blockType ? deprecationMessage) { inherit (blockType) deprecationMessage; }
+      );
+
+    parseSchema =
+      {
+        attributes ? { },
+        block_types ? { },
+      }:
+      lib.types.submodule {
+        options =
+          (builtins.mapAttrs internal.parseAttribute attributes)
+          // (builtins.mapAttrs internal.parseBlockType block_types);
+      };
   };
 in
 {
-  flake.lib.mkTerranixModule =
-    name: schema:
-    let
-      parseAttributes =
-        attributes:
-        lib.types.submodule {
-          options = builtins.mapAttrs (k: v: lib.mkOption { type = typemap.${v.type}; }) attributes;
-        };
-      fqn = builtins.head (builtins.attrNames schema.provider_schemas);
-      provider =
-        let
-          providerSchema = schema.provider_schemas.${fqn};
-        in
-        lib.mkOption {
+  flake.lib = {
+    inherit internal;
+    mkTerranixModule =
+      name: schema:
+      let
+        fqn = builtins.head (builtins.attrNames schema.provider_schemas);
+        providerSchema = schema.provider_schemas.${fqn};
+        provider = lib.mkOption {
           type = lib.types.submodule {
             options = {
-              ${name} = lib.mkOption { type = parseAttributes providerSchema.provider.block.attributes; };
+              ${name} = lib.mkOption { type = internal.parseSchema providerSchema.provider.block; };
             };
           };
         };
-    in
-    {
-      inherit provider;
-    };
+        resource = lib.mkOption {
+          type = lib.types.submodule {
+            options = {
+              ${name} = lib.mkOption { type = internal.parseSchema providerSchema.resource_schemas.block; };
+            };
+          };
+        };
+
+        data = lib.mkOption {
+          type = lib.types.submodule {
+            options = {
+              ${name} = lib.mkOption { type = internal.parseSchema providerSchema.data_source_schemas.block; };
+            };
+          };
+        };
+      in
+      {
+        inherit provider resource data;
+      };
+  };
 }
