@@ -1,4 +1,5 @@
 { lib, suite, ... }:
+
 suite "base" {
   tests = {
     "simple" = {

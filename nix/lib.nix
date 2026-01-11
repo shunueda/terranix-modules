@@ -17,142 +17,119 @@ let
           elementType = parseType (builtins.elemAt tfType 1);
         in
         {
+          # TODO: tuple, object
           list = lib.types.listOf;
+          # TODO: set != list but no good way of representing in nixos modlue system. Custom type?
           set = lib.types.listOf;
           map = lib.types.attrsOf;
         }
         .${aggregate}
           elementType;
 
-    parseAttributes =
-      attributes:
-      builtins.mapAttrs
-        (
-          name:
-          {
-            type,
-            optional ? false,
-            computed ? false,
-            description ? null,
-            deprecated ? false,
-          }:
-          lib.mkOption (
-            {
-              type =
-                let
-                  parsed = parseType type;
-                in
-                if optional || computed then lib.types.nullOr parsed else parsed;
-              inherit description;
-            }
-            // lib.optionalAttrs (optional || computed) { default = null; }
-            // lib.optionalAttrs deprecated { deprecationMessage = "warning: ${name} is deprecated"; }
-          )
-        )
-        (
-          builtins.filterAttrs (
-            name:
-            {
-              computed ? false,
-              optional ? false,
-            }:
-            !(computed && !optional) # computed && non-optional is read-only
-          ) attributes
-        );
-
-    parseBlock =
+    parseAttribute =
       name:
       {
-        attributes ? { },
-        block_types ? { },
+        type,
+        required ? false,
+        optional ? false,
+        computed ? false,
         description ? null,
-        deprecated ? false,
+        sensitive ? false,
       }:
+      assert lib.assertMsg (!(required && optional)) "Attribute cannot be both required and optional.";
+      assert lib.assertMsg (!(required && computed)) "Attribute cannot be both required and computed.";
       let
-        blockType = parseSchema { inherit attributes block_types; };
+        parsedType = parseType type;
+
+        optionType =
+          if computed && !optional then
+            lib.types.enum [ null ]
+          else if optional || computed then
+            lib.types.nullOr parsedType
+          else
+            parsedType;
+
+        hasDefault = optional || computed;
       in
       lib.mkOption (
         {
-          type = blockType;
+          type = optionType;
           inherit description;
         }
-        // lib.optionalAttrs deprecated { deprecationMessage = "warning: ${name} is deprecated"; }
+        // lib.optionalAttrs hasDefault { default = null; }
       );
 
-    parseBlockTypes =
-      blockTypes:
-      builtins.mapAttrs (
-        name:
-        {
-          nesting_mode,
-          block,
-          min_items ? 0,
-          max_items ? null,
-        }:
-        let
-          blockType = parseBlock name block;
-          baseType = blockType.type;
-        in
-        lib.mkOption (
+    parseBlockType =
+      name:
+      {
+        nesting_mode,
+        block,
+        min_items ? null,
+        # TODO: nixos module system can't represent this.
+        max_items ? null,
+      }:
+      let
+        blockType = parseBlock block;
+        isRequiredSingle = nesting_mode == "single" && min_items == 1;
+      in
+      lib.mkOption {
+        type =
           {
-            type =
-              {
-                list = lib.types.listOf;
-                set = lib.types.listOf;
-                single = lib.types.nullOr;
-                map = lib.types.attrsOf;
-              }
-              .${nesting_mode}
-                baseType;
-            description = blockType.description or null;
+            list = lib.types.listOf;
+            set = lib.types.listOf;
+            map = lib.types.attrsOf;
+            single = if isRequiredSingle then blockType else lib.types.nullOr blockType;
           }
-          // lib.optionalAttrs (blockType ? deprecationMessage) { inherit (blockType) deprecationMessage; }
-        )
-      ) blockTypes;
+          .${nesting_mode}
+            blockType;
+      };
 
-    parseSchema =
+    parseBlock =
       {
         attributes ? { },
         block_types ? { },
       }:
       lib.types.submodule {
-        options = (internal.parseAttributes attributes) // (internal.parseBlockTypes block_types);
+        options =
+          (builtins.mapAttrs internal.parseAttribute attributes)
+          // (builtins.mapAttrs internal.parseBlockType block_types);
+      };
+
+    parseSchema =
+      { version, block }:
+      lib.mkOption {
+        type = parseBlock block;
+        default = { };
       };
   };
 in
 {
   flake.lib = {
     inherit internal;
+
     mkTerranixModule =
       name: schema:
       let
         fqn = builtins.head (builtins.attrNames schema.provider_schemas);
         providerSchema = schema.provider_schemas.${fqn};
-        provider = lib.mkOption {
-          type = lib.types.submodule {
-            options = {
-              ${name} = lib.mkOption { type = internal.parseSchema providerSchema.provider.block; };
-            };
-          };
-        };
-        resource = lib.mkOption {
-          type = lib.types.submodule {
-            options = {
-              ${name} = lib.mkOption { type = internal.parseSchema providerSchema.resource_schemas.block; };
-            };
-          };
-        };
-
-        data = lib.mkOption {
-          type = lib.types.submodule {
-            options = {
-              ${name} = lib.mkOption { type = internal.parseSchema providerSchema.data_source_schemas.block; };
-            };
-          };
-        };
       in
       {
-        inherit provider resource data;
+        provider = internal.parseSchema providerSchema.provider;
+        resource = lib.mkOption {
+          type = lib.types.submodule {
+            options = builtins.mapAttrs (_: value: internal.parseSchema value) providerSchema.resource_schemas;
+          };
+          default = { };
+        };
+        data = lib.mkOption {
+          type = lib.types.submodule {
+            options = builtins.mapAttrs (
+              _: value: internal.parseSchema value
+            ) providerSchema.data_source_schemas;
+          };
+          default = { };
+        };
+        # TODO: ephemeral, function
       };
   };
 }
