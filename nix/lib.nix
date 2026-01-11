@@ -19,7 +19,7 @@ let
         {
           # TODO: tuple, object
           list = lib.types.listOf;
-          # TODO: set != list but no good way of representing in nixos modlue system. Custom type?
+          # TODO: set != list but no good way of representing in nixos module system. Custom type?
           set = lib.types.listOf;
           map = lib.types.attrsOf;
         }
@@ -97,9 +97,29 @@ let
 
     parseSchema =
       { version, block }:
-      lib.mkOption {
-        type = parseBlock block;
-        default = { };
+      assert lib.assertMsg (version == 0) "schema version must be 0";
+      lib.mkOption { type = parseBlock block; };
+
+    parseProviderSchema =
+      fqn:
+      {
+        provider ? { },
+        resource_schemas ? { },
+        data_source_schemas ? { },
+      }:
+      {
+        provider = internal.parseSchema (provider);
+        resource = lib.mkOption {
+          type = lib.types.submodule {
+            options = builtins.mapAttrs (_: value: internal.parseSchema value) (resource_schemas);
+          };
+        };
+        data = lib.mkOption {
+          type = lib.types.submodule {
+            options = builtins.mapAttrs (_: value: internal.parseSchema value) data_source_schemas;
+          };
+        };
+        # TODO: ephemeral, function
       };
   };
 in
@@ -108,28 +128,12 @@ in
     inherit internal;
 
     mkTerranixModule =
-      name: schema:
+      name:
+      { format_version, provider_schemas }:
+      assert lib.assertMsg (format_version == "1.0") "format_version must be 1.0";
       let
-        fqn = builtins.head (builtins.attrNames schema.provider_schemas);
-        providerSchema = schema.provider_schemas.${fqn};
+        fqn = builtins.head (builtins.attrNames provider_schemas);
       in
-      {
-        provider = internal.parseSchema providerSchema.provider;
-        resource = lib.mkOption {
-          type = lib.types.submodule {
-            options = builtins.mapAttrs (_: value: internal.parseSchema value) providerSchema.resource_schemas;
-          };
-          default = { };
-        };
-        data = lib.mkOption {
-          type = lib.types.submodule {
-            options = builtins.mapAttrs (
-              _: value: internal.parseSchema value
-            ) providerSchema.data_source_schemas;
-          };
-          default = { };
-        };
-        # TODO: ephemeral, function
-      };
+      (builtins.mapAttrs internal.parseProviderSchema provider_schemas).${fqn};
   };
 }
