@@ -1,8 +1,10 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
-    flake-parts.url = "github:hercules-ci/flake-parts";
-    devshell.url = "github:numtide/devshell";
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -13,6 +15,12 @@
       inputs.flake-parts.follows = "flake-parts";
       inputs.systems.follows = "systems";
     };
+    nix-unit = {
+      url = "github:nix-community/nix-unit";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-parts.follows = "flake-parts";
+      inputs.treefmt-nix.follows = "treefmt-nix";
+    };
     systems.url = "github:nix-systems/default";
   };
   outputs =
@@ -20,7 +28,7 @@
       nixpkgs,
       flake-parts,
       treefmt-nix,
-      devshell,
+      nix-unit,
       systems,
       ...
     }@inputs:
@@ -35,18 +43,28 @@
                 config.allowUnfree = true;
               };
             };
+            nix-unit = { inherit inputs; };
           };
+        flake = {
+          tests = {
+            test1 = {
+              expr = builtins.tryEval (throw "I give up");
+              expected = {
+                success = false;
+              };
+            };
+          };
+        };
       };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import systems;
       imports = [
-        ./nix/devshells.nix
         ./nix/treefmt.nix
         ./nix/scope.nix
         ./nix/lib.nix
-        devshell.flakeModule
         treefmt-nix.flakeModule
+        nix-unit.modules.flake.default
         flakeAllSystems
       ];
     };

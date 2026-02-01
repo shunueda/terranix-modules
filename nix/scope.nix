@@ -2,7 +2,6 @@
 {
   options.perSystem = flake-parts-lib.mkPerSystemOption (
     {
-      self',
       pkgs,
       lib,
       system,
@@ -14,72 +13,14 @@
         let
           scope = lib.makeScope pkgs.newScope (scopeSelf: {
             inherit (pkgs) terraform;
-
-            # Injecting self as terranix-modules to all the tests so the tests look like how the
-            # users would use.
-            terranix-modules = self;
-
-            # Custom test suite. A thin facade over lib.debug testers.
-            suite =
-              label:
-              { tests }:
-              let
-                failures = lib.runTests (
-                  lib.mapAttrs' (
-                    name:
-                    {
-                      options,
-                      config,
-                      expected ? true,
-                    }@test:
-                    # lib.runTests wants all names to be prefixed with "test", but I don't.
-                    lib.nameValuePair "test${name}" {
-                      inherit expected;
-                      expr =
-                        let
-                          # Note that this is not yet fully evaluated - Nix is lazy!
-                          evaluated = lib.evalModules {
-                            modules = [
-                              { inherit options; }
-                              (
-                                if lib.isFunction test.config then
-                                  { config, ... }:
-                                  {
-                                    config = test.config config;
-                                  }
-                                else
-                                  { inherit config; }
-                              )
-                            ];
-                          };
-                        in
-                        # Now we force full evaluation.
-                        (builtins.tryEval (builtins.deepSeq evaluated.config true)).success;
-                    }
-                  ) tests
-                );
-              in
-              # This feels wrong? I don't know Nix enough: the only pattern I know if to make it a
-              # derivation and have it as a build time check, but we should be able to test at eval
-              # time. But how?
-              pkgs.runCommandLocal "test-suite-${label}" { } (
-                builtins.deepSeq (lib.debug.throwTestFailures { inherit failures; }) ''
-                  touch $out
-                ''
-              );
           });
           availableOnSystem = lib.meta.availableOn { inherit system; };
         in
         {
           inherit scope;
-          checks =
-            lib.concatMapAttrs (k: v: lib.optionalAttrs (availableOnSystem v) { "build-${k}" = v; }) (
-              lib.filterAttrs (_: lib.isDerivation) scope
-            )
-            // lib.packagesFromDirectoryRecursive {
-              inherit (scope) callPackage;
-              directory = ../tests;
-            };
+          checks = lib.concatMapAttrs (k: v: lib.optionalAttrs (availableOnSystem v) { "build-${k}" = v; }) (
+            lib.filterAttrs (_: lib.isDerivation) scope
+          );
         };
     }
   );
